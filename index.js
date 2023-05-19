@@ -1,6 +1,8 @@
 const express = require("express")
 const { json } = require("express/lib/response")
 const morgan = require("morgan")
+const cors = require("cors")
+
 let phoneBook = [
   { 
     "id": 1,
@@ -29,7 +31,7 @@ const app = express()
 morgan.token('body', (req, res) => {return JSON.stringify(req.body)})
 
 app.use(morgan(':method :url :status :res[content-length] - :response-time ms :body'))
-
+app.use(cors())
 app.get('/api/persons', (request, response) => {
   response.json(phoneBook)
 })
@@ -49,7 +51,7 @@ app.get('/info', (request, response) => {
   response.send(`Phonebook has info for ${phoneBook.length} people <br/> <br/> ${Date()}`)
 })
 
-app.delete('/api/persons/delete/:id', (request, response) => {
+app.delete('/api/persons/:id', (request, response) => {
   const id = Number(request.params.id)
   phoneBook = phoneBook.filter(c => c.id !== id)
 
