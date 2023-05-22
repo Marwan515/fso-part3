@@ -1,91 +1,117 @@
+const Phonebook = require('./models/phonebookdb')
 const express = require('express')
-const { json } = require('express/lib/response')
 const morgan = require('morgan')
 const cors = require('cors')
 
-let phoneBook = [
-  { 
-    "id": 1,
-    "name": "Arto Hellas", 
-    "number": "040-123456"
-  },
-  { 
-    "id": 2,
-    "name": "Ada Lovelace", 
-    "number": "39-44-5323523"
-  },
-  { 
-    "id": 3,
-    "name": "Dan Abramov", 
-    "number": "12-43-234345"
-  },
-  { 
-    "id": 4,
-    "name": "Mary Poppendieck", 
-    "number": "39-23-6423122"
-  }
-]
-
 const app = express()
 
-morgan.token('body', (req, res) => {return JSON.stringify(req.body)})
+morgan.token('body', (req) => {return JSON.stringify(req.body)})
 
+const unkownkEndpoint = (request, response) => {
+  response.status(404).send({error: "Unkown endpoint"})
+}
+
+const errorHandler = (error, request, response, next) => {
+  if (error.name === "CastError") {
+    return response.status(400).send({error: "Malformatted id"})
+  } else if (error) {
+    return response.status(400).send({error: error.message})
+  }
+  next(error)
+}
+
+app.use(express.static('build'))
+app.use(express.json())
 app.use(morgan(':method :url :status :res[content-length] - :response-time ms :body'))
 app.use(cors())
 
-app.use(express.static('build'))
+let phoneCount = 0
 
-app.get('/api/persons', (request, response) => {
-  response.json(phoneBook)
-})
-
-app.get('/api/persons/:id', (request, response) => {
-  const id = Number(request.params.id)
-  const contact = phoneBook.find(c => c.id === id)
-  if (contact) {
-    response.json(contact)
-  } else {
-    response.status(404).end()
-  }
-  
-})
-
-app.get('/info', (request, response) => {
-  response.send(`Phonebook has info for ${phoneBook.length} people <br/> <br/> ${Date()}`)
-})
-
-app.delete('/api/persons/:id', (request, response) => {
-  const id = Number(request.params.id)
-  phoneBook = phoneBook.filter(c => c.id !== id)
-
-  response.status(204).end()
-})
-
-const generateId = () => {
-  const newId = Math.floor(Math.random() * 10000000) + Math.max(...phoneBook.map(i => i.id))
-  return newId
+async function phoneBookCount() {
+  const phoneCounttt = await Phonebook.estimatedDocumentCount()
+  phoneCount = phoneCounttt
+  return
 }
 
-app.post('/api/persons', express.json(),(request, response) => {
+phoneBookCount()
+
+app.get('/api/persons', (request, response, next) => {
+  Phonebook.find({})
+  .then(results => {
+    response.json(results)
+  })
+  .catch(error => next(error))
+})
+
+app.get('/api/persons/info', (request, response) => {
+  response.send(`Phonebook has info for ${phoneCount} people`)
+})
+
+app.get('/api/persons/:id', (request, response, next) => {
+  const id = request.params.id
+  Phonebook.findById(id)
+    .then(con => {
+      if (con) {
+        response.json(con.toJSON())
+      } else {
+        response.status(404).end()
+      }
+    })
+    .catch(error => next(error))
+})
+
+app.delete('/api/persons/:id', (request, response, next) => {
+  const id = request.params.id
+  Phonebook.findByIdAndRemove(id)
+    .then(() => {
+      response.status(204).end()
+    })
+    .catch(error => next(error))
+})
+
+app.post('/api/persons', (request, response, next) => {
   const body = request.body
-  if (body.name && body.phoneNumber) {
-    if (phoneBook.find(n => n.name == body.name)) {
-      return response.status(409).json({error: "Name must be unique"})
-    }
-    const contact = {
-      id: generateId(),
+  console.log(body)
+  if (body.name && body.phoneNumber) {   
+    const contact = new Phonebook ({
       name: body.name,
-      number: Number(body.phoneNumber)
+      number: body.phoneNumber
+    })
+    contact.save()
+      .then(sc => {
+        response.json(sc)
+      })
+      .catch(error => next(error))
+  }
+})
+
+app.put('/api/persons/:id', (request, response, next) => {
+  const body = request.body
+
+  if (body.name && body.phoneNumber) {
+    
+    const contact = {
+      name: body.name,
+      number: body.phoneNumber
     }
-    phoneBook = phoneBook.concat(contact)
-    response.json(contact)
+
+    Phonebook.findByIdAndUpdate(request.params.id, contact, { new: true, runValidators: true})
+      .then(uc => {
+        response.json(uc)
+      })
+      .catch(error => next(error))
   } else {
     return response.status(400).json({
       error:  'Persons name or number is missing'
     })
   }
+
 })
 
+app.use(unkownkEndpoint)
+app.use(errorHandler)
+
+// eslint-disable-next-line no-undef
 const PORT = process.env.PORT || 3001
 app.listen(PORT, () => {
   console.log(`server running on ${PORT}`)
